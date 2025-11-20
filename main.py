@@ -1,14 +1,22 @@
-# main.py – ZERO red lines, no cloudscraper needed
+# main.py – FIXED WITH PORT BINDING FOR RENDER FREE WEB SERVICE (November 2025)
+# Binds dummy HTTP server to PORT on 0.0.0.0 to pass Render health checks
+# Your Telegram bot runs in parallel – no changes to core logic
+
 from telethon import TelegramClient, events, Button
 import asyncio, subprocess, os, re, json, requests
 from urllib.parse import urljoin, urlparse
+import threading  # For running HTTP server in background thread
 
-# 100% SAFE – credentials only from Render environment variables
+# 100% SAFE – credentials only from environment variables
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-# Simple headers that bypass 95% of adult tube protections (no cloudscraper needed)
+# Writable folder for Render free tier
+DOWNLOAD_FOLDER = "/tmp"
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+# Simple headers for scraping
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -18,13 +26,10 @@ HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
-DOWNLOAD_FOLDER = "/tmp"
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
-
-client = TelegramClient('tubebot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 session = requests.Session()
 session.headers.update(HEADERS)
 
+client = TelegramClient('tubebot', API_ID, API_HASH)
 video_page_regex = re.compile(r'href=["\']([^"\']{10,}/\d+?/[^"\']+?\.html)["\']', re.I)
 
 async def get_categories(base_url):
@@ -99,6 +104,37 @@ async def callback(event):
     await client.send_file(event.chat_id, filepath, caption="Direct CDN links (yt-dlp extracted)")
     os.remove(filepath)
 
-print("Bot running – no red lines, no cloudscraper, 100% working!")
+# DUMMY HTTP SERVER FOR RENDER PORT BINDING (runs in background thread)
+def run_dummy_server():
+    port = int(os.environ.get('PORT', 10000))
+    host = '0.0.0.0'  # REQUIRED: Bind to all interfaces for Render
 
-client.run_until_disconnected()
+    # Simple HTTP health check endpoint (passes Render's scans)
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/health':
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'OK - Bot is healthy')
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+    server = HTTPServer((host, port), HealthHandler)
+    print(f"🚀 Dummy HTTP server bound to {host}:{port} for Render health checks")
+    server.serve_forever()
+
+# Start everything
+if __name__ == '__main__':
+    # Start dummy server in background thread (doesn't block bot)
+    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
+    server_thread.start()
+
+    # Start Telegram bot
+    print("Starting Telegram bot...")
+    client.start(bot_token=BOT_TOKEN)
+    print("Bot running – send any adult tube domain!")
+    client.run_until_disconnected()
