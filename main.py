@@ -18,7 +18,7 @@ HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
-DOWNLOAD_FOLDER = "/data"
+DOWNLOAD_FOLDER = "/tmp"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 client = TelegramClient('tubebot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -100,4 +100,5 @@ async def callback(event):
     os.remove(filepath)
 
 print("Bot running – no red lines, no cloudscraper, 100% working!")
+
 client.run_until_disconnected()
